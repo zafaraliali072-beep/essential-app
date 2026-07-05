@@ -575,6 +575,8 @@ document.querySelectorAll('#currencyChips .chip').forEach(chip=>{
 });
 document.getElementById('refreshBtn').addEventListener('click', loadNews);
 
+// ⚠️ IMPORTANT: replace this with YOUR github username + repo name once you set up the mirror workflow
+const MIRROR_URL = 'https://raw.githubusercontent.com/zafaraliali072-beep/essential-app/main/calendar.json';
 const FEED_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 const PROXY_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(FEED_URL);
 
@@ -591,13 +593,18 @@ async function loadNews(){
   let data = null;
 
   try{
-    data = await tryFetch(FEED_URL, 'Direct feed');
-  }catch(err1){
-    lastErr = err1;
+    data = await tryFetch(MIRROR_URL, 'Mirror feed');
+  }catch(err0){
+    lastErr = err0;
     try{
-      data = await tryFetch(PROXY_URL, 'Proxy feed');
-    }catch(err2){
-      lastErr = err2;
+      data = await tryFetch(FEED_URL, 'Direct feed');
+    }catch(err1){
+      lastErr = err1;
+      try{
+        data = await tryFetch(PROXY_URL, 'Proxy feed');
+      }catch(err2){
+        lastErr = err2;
+      }
     }
   }
 
