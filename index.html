@@ -395,4 +395,341 @@ const INSTRUMENTS = [
   {label:'GBPUSD',           pipValue:10,  pipSize:0.0001},
   {label:'AUDUSD',           pipValue:10,  pipSize:0.0001},
   {label:'NZDUSD',           pipValue:10,  pipSize:0.0001},
-  {la
+  {label:'USDCAD',           pipValue:7.5, pipSize:0.0001},
+  {label:'USDJPY',           pipValue:9.1, pipSize:0.01},
+  {label:'GBPJPY',           pipValue:9.1, pipSize:0.01},
+  {label:'EURJPY',           pipValue:9.1, pipSize:0.01},
+  {label:'BTCUSD (Bitcoin)', pipValue:1,   pipSize:1, crypto:true},
+  {label:'ETHUSD (Ethereum)',pipValue:1,   pipSize:1, crypto:true},
+];
+let selectedInstrument = INSTRUMENTS[0];
+
+const pairTrigger = document.getElementById('pairTrigger');
+const pairBackdrop = document.getElementById('pairBackdrop');
+const pairList = document.getElementById('pairList');
+
+function buildPairList(){
+  pairList.innerHTML = '';
+  INSTRUMENTS.forEach((inst, i)=>{
+    if(i===2 || i===10) { // dividers before majors group and before crypto group
+      const div = document.createElement('div');
+      div.className = 'sheet-divider';
+      pairList.appendChild(div);
+    }
+    const item = document.createElement('div');
+    item.className = 'sheet-item' + (inst.label===selectedInstrument.label ? ' selected':'');
+    item.innerHTML = `<span>${inst.label}</span><span class="check">✓</span>`;
+    item.addEventListener('click', ()=>{
+      selectedInstrument = inst;
+      document.getElementById('pairTriggerLabel').textContent = inst.label;
+      closePairSheet();
+      calculate();
+    });
+    pairList.appendChild(item);
+  });
+}
+function openPairSheet(){
+  buildPairList();
+  pairBackdrop.classList.add('open');
+  pairTrigger.classList.add('open');
+}
+function closePairSheet(){
+  pairBackdrop.classList.remove('open');
+  pairTrigger.classList.remove('open');
+}
+pairTrigger.addEventListener('click', openPairSheet);
+pairBackdrop.addEventListener('click', (e)=>{ if(e.target === pairBackdrop) closePairSheet(); });
+const slPipsEl = document.getElementById('slPips');
+const riskChips = document.querySelectorAll('#riskChips .chip');
+
+riskChips.forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    riskChips.forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    riskPctEl.value = chip.dataset.risk;
+    calculate();
+  });
+});
+[balanceEl, riskPctEl, slPipsEl].forEach(el=>el.addEventListener('input', ()=>{
+  riskChips.forEach(c=>c.classList.toggle('active', c.dataset.risk === riskPctEl.value));
+  calculate();
+}));
+
+function calculate(){
+  const balance = parseFloat(balanceEl.value) || 0;
+  const riskPct = parseFloat(riskPctEl.value) || 0;
+  const slPips = parseFloat(slPipsEl.value) || 0;
+  const pipValue = selectedInstrument.pipValue;
+
+  const riskAmount = balance * (riskPct/100);
+  let lots = 0;
+  if(slPips > 0 && pipValue > 0){
+    lots = riskAmount / (slPips * pipValue);
+  }
+
+  document.getElementById('lotOutput').textContent = lots.toFixed(2);
+  document.getElementById('miniOutput').textContent = (lots*10).toFixed(1);
+  document.getElementById('microOutput').textContent = Math.round(lots*100);
+  document.getElementById('unitsOutput').textContent = Math.round(lots*100000).toLocaleString();
+  document.getElementById('riskAmtOutput').textContent = '$' + riskAmount.toFixed(2);
+
+  document.getElementById('jpyNote').style.display = selectedInstrument.label.includes('JPY') ? 'block' : 'none';
+  document.getElementById('cryptoNote').style.display = selectedInstrument.crypto ? 'block' : 'none';
+  document.getElementById('highRiskWarning').style.display = riskPct > 10 ? 'block' : 'none';
+}
+calculate();
+
+/* ---------- Sessions (DST-aware) ---------- */
+// Each exchange's conventional local trading hours (fixed local wall-clock).
+// IST has no DST, but NY/London DO observe DST, so the IST equivalent shifts
+// by ~1hr twice a year. We recompute this live from the actual current date
+// instead of hardcoding, so it stays correct all year round.
+const BASE_SESSIONS = [
+  {name:'Sydney',   tz:'Australia/Sydney',   openLocal:8, closeLocal:17, color:'#4A90D9'},
+  {name:'Tokyo',    tz:'Asia/Tokyo',         openLocal:9, closeLocal:18, color:'#3DDC84'},
+  {name:'London',   tz:'Europe/London',      openLocal:8, closeLocal:17, color:'#F0A93E'},
+  {name:'New York', tz:'America/New_York',   openLocal:8, closeLocal:17, color:'#FF5C5C'},
+];
+
+// Returns how many hours ahead of UTC a timezone currently is (handles DST automatically)
+function getTZOffsetHours(timeZone, date){
+  const utcMillis = new Date(date.toLocaleString('en-US', {timeZone:'UTC'})).getTime();
+  const tzMillis  = new Date(date.toLocaleString('en-US', {timeZone})).getTime();
+  return (tzMillis - utcMillis) / 3600000;
+}
+
+function computeSessionsForNow(){
+  const now = new Date();
+  return BASE_SESSIONS.map(s=>{
+    const offset = getTZOffsetHours(s.tz, now);   // e.g. NY in summer = -4, winter = -5
+    const toIST = h => (((h - offset) + 5.5) + 24) % 24;
+    let start = toIST(s.openLocal);
+    let end   = toIST(s.closeLocal);
+    if(end <= start) end += 24; // session crosses midnight IST
+    return {name:s.name, start, end, color:s.color};
+  });
+}
+
+let SESSIONS = computeSessionsForNow();
+// Recompute once a day in case DST changes or date rolls over while app stays open
+setInterval(()=>{ SESSIONS = computeSessionsForNow(); buildRibbon(); renderSessionList(); }, 60*60*1000);
+
+function buildRibbon(){
+  const ribbon = document.getElementById('ribbon');
+  ribbon.innerHTML = '';
+  const laneHeight = 100/SESSIONS.length;
+  SESSIONS.forEach((s, i)=>{
+    let start = s.start, end = s.end;
+    const makeSeg = (st, en)=>{
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.style.left = (st/24*100)+'%';
+      seg.style.width = ((en-st)/24*100)+'%';
+      seg.style.top = (i*laneHeight)+'%';
+      seg.style.height = laneHeight+'%';
+      seg.style.background = s.color;
+      ribbon.appendChild(seg);
+    };
+    if(end > 24){
+      makeSeg(start, 24);
+      makeSeg(0, end-24);
+    } else {
+      makeSeg(start, end);
+    }
+  });
+  const needle = document.createElement('div');
+  needle.className = 'now-needle';
+  needle.id = 'nowNeedle';
+  ribbon.appendChild(needle);
+}
+function updateRibbonNeedle(decimalHour){
+  const needle = document.getElementById('nowNeedle');
+  if(needle) needle.style.left = (decimalHour/24*100)+'%';
+}
+buildRibbon();
+
+function inSession(decimalHour, s){
+  if(s.end > 24){
+    return decimalHour >= s.start || decimalHour < (s.end-24);
+  }
+  return decimalHour >= s.start && decimalHour < s.end;
+}
+function fmtHour(h){
+  h = h % 24;
+  const hh = Math.floor(h);
+  const mm = Math.round((h-hh)*60);
+  const ampm = hh>=12 ? 'PM':'AM';
+  let disp = hh%12; if(disp===0) disp=12;
+  return `${disp}:${pad(mm)} ${ampm}`;
+}
+function renderSessionList(){
+  const list = document.getElementById('sessionList');
+  list.innerHTML = '';
+  SESSIONS.forEach(s=>{
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    item.dataset.name = s.name;
+    item.innerHTML = `
+      <div class="sname">
+        <div class="dot" style="background:${s.color}"></div>
+        <div>
+          <div style="font-weight:600; font-size:13.5px;">${s.name}</div>
+          <div class="stime">${fmtHour(s.start)} – ${fmtHour(s.end)}</div>
+        </div>
+      </div>
+      <div class="status off">Closed</div>
+    `;
+    list.appendChild(item);
+  });
+  updateOverlapText();
+}
+function updateOverlapText(){
+  const london = SESSIONS.find(s=>s.name==='London');
+  const ny = SESSIONS.find(s=>s.name==='New York');
+  const overlapStart = Math.max(london.start, ny.start);
+  const overlapEnd = Math.min(london.end, ny.end);
+  const el = document.getElementById('overlapText');
+  if(overlapEnd > overlapStart){
+    el.textContent = `${fmtHour(overlapStart)}–${fmtHour(overlapEnd)} IST. Highest liquidity and volatility for XAUUSD — the window most gold traders build their day around.`;
+  } else {
+    el.textContent = `No overlap right now — check back as session times shift.`;
+  }
+}
+renderSessionList();
+function updateSessionStatus(decimalHour){
+  document.querySelectorAll('.session-item').forEach(item=>{
+    const s = SESSIONS.find(x=>x.name===item.dataset.name);
+    const active = inSession(decimalHour, s);
+    item.classList.toggle('live', active);
+    const status = item.querySelector('.status');
+    status.textContent = active ? 'Live' : 'Closed';
+    status.className = 'status ' + (active ? 'on':'off');
+  });
+}
+
+/* ---------- News (ForexFactory feed) ---------- */
+let newsLoadedOnce = false;
+let allNewsData = [];
+let currentCurFilter = 'ALL';
+let currentImpactFilter = 'ALL';
+
+document.querySelectorAll('#currencyChips .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('#currencyChips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    currentCurFilter = chip.dataset.cur;
+    renderNews();
+  });
+});
+document.querySelectorAll('#impactChips .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('#impactChips .chip').forEach(c=>c.classList.remove('active'));
+    chip.classList.add('active');
+    currentImpactFilter = chip.dataset.impact;
+    renderNews();
+  });
+});
+document.getElementById('refreshBtn').addEventListener('click', loadNews);
+
+// ⚠️ IMPORTANT: replace this with YOUR github username + repo name once you set up the mirror workflow
+const MIRROR_URL = 'https://raw.githubusercontent.com/zafaraliali072-beep/essential-app/main/calendar.json';
+const FEED_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
+const PROXY_URL = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(FEED_URL);
+
+async function tryFetch(url, label){
+  const res = await fetch(url);
+  if(!res.ok) throw new Error(label + ' responded with ' + res.status);
+  return await res.json();
+}
+
+async function loadNews(){
+  const container = document.getElementById('newsContainer');
+  container.innerHTML = '<div class="loading">Loading calendar…</div>';
+  let lastErr = null;
+  let data = null;
+
+  try{
+    data = await tryFetch(MIRROR_URL, 'Mirror feed');
+  }catch(err0){
+    lastErr = err0;
+    try{
+      data = await tryFetch(FEED_URL, 'Direct feed');
+    }catch(err1){
+      lastErr = err1;
+      try{
+        data = await tryFetch(PROXY_URL, 'Proxy feed');
+      }catch(err2){
+        lastErr = err2;
+      }
+    }
+  }
+
+  if(data){
+    allNewsData = data;
+    newsLoadedOnce = true;
+    const p = getISTParts();
+    document.getElementById('newsUpdatedAt').textContent =
+      `Updated ${pad(p.hour)}:${pad(p.minute)} IST`;
+    renderNews();
+  } else {
+    container.innerHTML = `
+      <div class="news-error">
+        Couldn't load the live calendar — no internet, or this network/webview is blocking the request.
+        <br><button onclick="window.open('https://www.forexfactory.com/calendar','_blank')">Open ForexFactory ↗</button>
+        <div style="margin-top:14px; font-size:10px; color:#555; word-break:break-word;">
+          Debug: ${lastErr ? lastErr.message : 'unknown error'}
+        </div>
+      </div>`;
+  }
+}
+
+function renderNews(){
+  const container = document.getElementById('newsContainer');
+  if(!allNewsData.length){
+    container.innerHTML = '<div class="news-empty">No calendar data loaded yet.</div>';
+    return;
+  }
+  let items = allNewsData.filter(ev =>
+    (currentCurFilter==='ALL' || ev.country === currentCurFilter) &&
+    (currentImpactFilter==='ALL' || (ev.impact && ev.impact.toLowerCase() === currentImpactFilter.toLowerCase()))
+  );
+
+  // sort by actual date
+  items = items.map(ev=>({...ev, _dt: new Date(ev.date)})).sort((a,b)=>a._dt-b._dt);
+
+  if(!items.length){
+    container.innerHTML = '<div class="news-empty">No events for this currency this week.</div>';
+    return;
+  }
+
+  container.innerHTML = '';
+  items.forEach(ev=>{
+    const istTime = ev._dt.toLocaleString('en-US', {timeZone:'Asia/Kolkata', hour:'2-digit', minute:'2-digit', hour12:true});
+    const istDate = ev._dt.toLocaleString('en-US', {timeZone:'Asia/Kolkata', day:'2-digit', month:'short'});
+    const impactClass = 'impact-' + (ev.impact ? ev.impact.toLowerCase() : 'low');
+    const div = document.createElement('div');
+    div.className = 'news-item';
+    div.innerHTML = `
+      <div class="impact-bar ${impactClass}"></div>
+      <div class="news-body">
+        <div class="news-top">
+          <span class="news-cur">${ev.country || ''}</span>
+          <span class="news-time">${istDate}, ${istTime} IST</span>
+        </div>
+        <div class="news-title">${ev.title || ''}</div>
+        ${(ev.forecast || ev.previous || ev.actual) ? `
+        <div class="news-stats">
+          ${ev.actual ? `<span>Actual <b>${ev.actual}</b></span>`:''}
+          ${ev.forecast ? `<span>Forecast <b>${ev.forecast}</b></span>`:''}
+          ${ev.previous ? `<span>Previous <b>${ev.previous}</b></span>`:''}
+        </div>`:''}
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+tickClock();
+</script>
+</body>
+</html>
