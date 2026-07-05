@@ -1,0 +1,33 @@
+name: Mirror ForexFactory Calendar
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes
+  workflow_dispatch:          # allows manual trigger from GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch latest calendar JSON
+        run: |
+          curl -sL "https://nfs.faireconomy.media/ff_calendar_thisweek.json" -o calendar.json
+          # sanity check: make sure it's actually JSON, not an HTML error page
+          if ! head -c 1 calendar.json | grep -q '\['; then
+            echo "Fetched file does not look like JSON, aborting commit."
+            exit 1
+          fi
+
+      - name: Commit updated file
+        run: |
+          git config user.name "calendar-bot"
+          git config user.email "actions@github.com"
+          git add calendar.json
+          git diff --quiet --cached || git commit -m "Update calendar mirror"
+          git push
