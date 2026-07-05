@@ -115,6 +115,7 @@
     color:var(--text-dim); font-size:13px; cursor:pointer; user-select:none; transition:all .15s;
   }
   .chip.active{background:var(--gold); color:#0B0D10; border-color:var(--gold); font-weight:600;}
+  .chip-dot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align:middle;}
 
   .result{
     background:linear-gradient(135deg, rgba(201,162,39,0.14), rgba(201,162,39,0.04));
@@ -311,6 +312,12 @@
         <div class="chip" data-cur="GBP">GBP</div>
         <div class="chip" data-cur="JPY">JPY</div>
       </div>
+      <div class="chips" id="impactChips">
+        <div class="chip active" data-impact="ALL">All Impact</div>
+        <div class="chip" data-impact="High"><span class="chip-dot" style="background:var(--red)"></span>High</div>
+        <div class="chip" data-impact="Medium"><span class="chip-dot" style="background:var(--amber)"></span>Medium</div>
+        <div class="chip" data-impact="Low"><span class="chip-dot" style="background:var(--text-dim)"></span>Low</div>
+      </div>
       <div class="refresh-row">
         <span style="font-size:11px; color:var(--text-dim);" id="newsUpdatedAt">—</span>
         <button id="refreshBtn">↻ Refresh</button>
@@ -388,17 +395,4 @@ const INSTRUMENTS = [
   {label:'GBPUSD',           pipValue:10,  pipSize:0.0001},
   {label:'AUDUSD',           pipValue:10,  pipSize:0.0001},
   {label:'NZDUSD',           pipValue:10,  pipSize:0.0001},
-  {label:'USDCAD',           pipValue:7.5, pipSize:0.0001},
-  {label:'USDJPY',           pipValue:9.1, pipSize:0.01},
-  {label:'GBPJPY',           pipValue:9.1, pipSize:0.01},
-  {label:'EURJPY',           pipValue:9.1, pipSize:0.01},
-  {label:'BTCUSD (Bitcoin)', pipValue:1,   pipSize:1, crypto:true},
-  {label:'ETHUSD (Ethereum)',pipValue:1,   pipSize:1, crypto:true},
-];
-let selectedInstrument = INSTRUMENTS[0];
-
-const pairTrigger = document.getElementById('pairTrigger');
-const pairBackdrop = document.getElementById('pairBackdrop');
-const pairList = document.getElementById('pairList');
-
-function bui
+  {la
